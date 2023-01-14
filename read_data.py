@@ -1,22 +1,6 @@
 import sys
+from typing import Any
 import pandas as pd
-
-
-def main():
-    """_summary_
-    """
-    gdp_path = 'API_NY.GDP.MKTP.CD_DS2_en_csv_v2_4751562/API_NY.GDP.MKTP.CD_DS2_en_csv_v2_4751562.csv'
-    populations_path = "API_SP.POP.TOTL_DS2_en_csv_v2_4751604/API_SP.POP.TOTL_DS2_en_csv_v2_4751604.csv"
-    co2_path = "co2-fossil-by-nation_zip/data/fossil-fuel-co2-emissions-by-nation_csv.csv"
-
-    gdp = read_file_to_df(gdp_path)
-    populations = read_file_to_df(populations_path)
-    co2 = read_file_to_df(co2_path, skip=False)
-
-    gdp, populations, co2, common_years = check_data(gdp, populations,
-                                                     co2,  [1999, 2010])
-    print(common_years)
-    all_data = join_data(gdp, populations, co2, [1999, 2010])
 
 
 def read_file_to_df(file_path: str, skip: bool = True) -> pd.DataFrame:
@@ -35,10 +19,9 @@ def read_file_to_df(file_path: str, skip: bool = True) -> pd.DataFrame:
             data_frame = pd.read_csv(file_path, header=2, sep=",")
             data_frame = data_frame.iloc[:, :-1]
             year = list(data_frame.columns)
-            for index, _ in enumerate(year):
-                if index >= 4:
-                    year[index] = int(year[index])
-            data_frame.columns = year
+            year[4:] = list(map(int, year[4:]))  # type: ignore
+            data_frame.columns = pd.Index(year)
+        # Files with no header
         else:
             data_frame = pd.read_csv(file_path, sep=",")
             data_frame = data_frame.rename(columns={"Country": "Country Name"})
@@ -49,7 +32,7 @@ def read_file_to_df(file_path: str, skip: bool = True) -> pd.DataFrame:
         print("No data")
         sys.exit(-1)
     except pd.errors.ParserError:
-        print("Parse error")
+        print("Parser error")
         sys.exit(-1)
     return data_frame
 
@@ -73,15 +56,14 @@ def select_years(gdp: pd.DataFrame, populations: pd.DataFrame, co2: pd.DataFrame
     # Get list of all of the common years and sort it
     common_years = list(set(gdp.columns[4:]).intersection(
         co2["Year"], populations.columns[4:]))
-    common_years.sort(key=int)
     # Select boundary years if they are not provided
     if years[0] is None:
-        years[0] = min(common_years)
+        years[0] = min(common_years)  # type: ignore
     if years[1] is None:
-        years[1] = max(common_years)
+        years[1] = max(common_years)  # type: ignore
     # Create the list of years which will be used
     chosen_years = [year for year in common_years
-                    if int(year) >= years[0] and int(year) <= years[1]]
+                    if year >= years[0] and year <= years[1]]
     if len(chosen_years) == 0:
         print("Error, provided files have no data for chosen years")
         sys.exit(-1)
@@ -105,12 +87,13 @@ def join_same_countries(data: pd.DataFrame, data_type: int) -> pd.DataFrame:
     """
     # For co2 data
     if data_type == 1:
-        aggregate_function = {"Country Name": 'first', "Year": 'first'}
+        aggregate_function:dict[Any, str] = {"Country Name": 'first', "Year": 'first'}
         for i in list(data.columns):
             if i not in ["Country Name", "Year"]:
                 aggregate_function[i] = 'sum'
         new_data = data.groupby(['Year', 'Country Name'], as_index=False).aggregate(
             aggregate_function).reindex(columns=data.columns)
+    # For other data types
     else:
         aggregate_function = {"Country Name": 'first'}
         for i in list(data.columns):
@@ -142,18 +125,20 @@ def check_countries(gdp_subset: pd.DataFrame, populations_subset: pd.DataFrame,
     """
     # Joined shape (795, 12) (1094, 10) (1330, 3) (1330, 3)
     # Change country names according to the provided dictionary
-    co2_subset['Country Name'] = co2_subset['Country Name'].replace(
+    co2_subset = co2_subset.replace(
         list(countries_dict.keys()), list(countries_dict.values()))
-    populations_subset['Country Name'] = populations_subset['Country Name'].replace(
+    populations_subset = populations_subset.replace(
         list(countries_dict.keys()), list(countries_dict.values()))
-    gdp_subset['Country Name'] = gdp_subset['Country Name'].replace(
+    gdp_subset = gdp_subset.replace(
         list(countries_dict.keys()), list(countries_dict.values()))
 
     # Merge data about the same countries
     co2_subset = join_same_countries(co2_subset, data_type=1)
     populations_subset = join_same_countries(populations_subset, data_type=0)
     gdp_subset = join_same_countries(gdp_subset, data_type=0)
-    
+
+    """
+    # Analyze diffs
     gdp_countries = set(gdp_subset["Country Name"].str.upper())
     population_countries = set(
         populations_subset["Country Name"].str.upper())
@@ -188,7 +173,7 @@ def check_countries(gdp_subset: pd.DataFrame, populations_subset: pd.DataFrame,
         if i not in population_countries:
             not_in_pop.append(i)
     print(not_in_pop, len(not_in_pop), len(
-        population_countries), len(co2_countries))
+        population_countries), len(co2_countries))"""
     return gdp_subset, populations_subset, co2_subset
 
 
@@ -295,12 +280,9 @@ def join_data(gdp_subset: pd.DataFrame, populations_subset: pd.DataFrame,
     # Merge all of the dataframe's together
     joined_data = pd.merge(co2_subset, gdp_population,
                            on=["Country Name", "Year"])
-    joined_data['Population'].replace(to_replace = 0, value = float('nan'), inplace=True)
+    joined_data['Population'].replace(
+        to_replace=0, value=float('nan'), inplace=True)
     print("Joined shape", joined_data.shape, co2_subset.shape,
           gdp_subset_melt.shape, populations_subset_melt.shape)
     print(len(set(joined_data["Country Name"])))
     return joined_data
-
-
-if __name__ == '__main__':
-    main()
