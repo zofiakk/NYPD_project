@@ -1,6 +1,21 @@
+"""Analyze data
+
+This script analyzes data stored in one Dataframe and saves the results
+to csv file.
+
+This file contains the following functions:
+
+    * get_per_capita - returns Dataframe with added per capita columns
+    * create_multiindex - returns pandas Multiindex
+    * find_5_highest - return Dataframe with data about countries with
+    highest data in provided category
+    * find_co2_changes - return Dataframe with data about countries which
+    had biggest and smallest changes in co2 emission
+    * save_results - Saves obtained results to  csv file
+"""
 import itertools
 import os
-from typing import List
+from typing import List, Union
 import pandas as pd
 
 def get_per_capita(data: pd.DataFrame) -> pd.DataFrame:
@@ -11,12 +26,12 @@ def get_per_capita(data: pd.DataFrame) -> pd.DataFrame:
     :return: DataFrame with added per capita columns
     :rtype: pd.DataFrame
     """
-    # nan/x -> nan
-
     data['Total per capita'] = data.apply(
         lambda row: row["Total"] / row["Population"], axis=1)
+    data['Total including bunker'] = data.apply(
+        lambda row: row["Total"] + row["Bunker fuels (Not in Total)"], axis=1)
     data['Total and bunker per capita'] = data.apply(
-        lambda row: (row["Total"] + row["Bunker fuels (Not in Total)"]) / row["Population"], axis=1)
+        lambda row: row['Total including bunker'] / row["Population"], axis=1)
     data['GDP per capita'] = data.apply(
         lambda row: row['GDP'] / row["Population"], axis=1)
     return data
@@ -74,16 +89,28 @@ def find_5_highest(data_processed: pd.DataFrame, column_names: dict, sort_by: st
     return highest_values
 
 
-def find_co2_changes(data_processed: pd.DataFrame)-> tuple[pd.DataFrame, List[int]]:
+def find_co2_changes(data_processed: pd.DataFrame)-> Union[tuple[pd.DataFrame, List[int]],
+                                                           tuple[None, None]]:
+    """Function which analyzes the data and looks for countries with biggest decrease
+    and growth in CO2 emission in the last 10 (or less) years
+
+    :param data_processed: Processed pandas DataFrame
+    :type data_processed: pd.DataFrame
+    :return: Dataframe with the name of the countries and list of years which had been analyzed
+    :rtype: Union[tuple[pd.DataFrame, List[int]], tuple[None, None]]
+    """
     years = set(data_processed["Year"])
+    if len(years) == 1:
+        print("Only one year provided. No changes can be calculated")
+        return None, None
     # Choose the last 10 years or the maximum number of years that there is data for
     if len(years) < 10:
         print(
-            f"There is not enough data to calculate the change in the last 10 years. Will use provided {len(years)} years instead.")
+            "There is not enough data to calculate the change in the last 10 years. " \
+                f"Will use provided {len(years)} years instead.")
         years_subset = list(years)
     else:
         years_subset = list(years)[-10:]
-    print(years_subset, years_subset[::len(years_subset)-1])
     max_change, min_change = 0, 0
     max_country, min_country = [], []
     # Iterate through all of the countries
@@ -108,16 +135,15 @@ def find_co2_changes(data_processed: pd.DataFrame)-> tuple[pd.DataFrame, List[in
                 else:
                     max_country = [country]
                     max_change = difference
-    # diff = sec- fir (>0 = bigger usage)
-    changes = pd.DataFrame({"Max change country": max_country, "Max change": max_change,
-                            "Min change country": min_country, "Min change": min_change},
-                           )
-    print(changes)
-    print(min_country, min_change,  max_country, max_change)
+    changes = pd.DataFrame({"Growth in emission": ', '.join(max_country),
+                            "Growth": [max_change],
+                            "Decrease in emission": ', '.join(min_country),
+                            "Decrease": [min_change]},
+                           index=[1])
     return changes,  years_subset[::len(years_subset)-1]
 
 
-def save_results(filename: str, data_list: List[pd.DataFrame], title_list: List[str]):
+def save_results(filename: str, data_list: List[Union[pd.DataFrame, None]], title_list: List[str]):
     """Function which saves Dataframe's to one csv file
 
     :param filename: Name of the output csv file
@@ -131,6 +157,7 @@ def save_results(filename: str, data_list: List[pd.DataFrame], title_list: List[
         os.remove(filename)
     with open(filename, 'a', encoding='UTF-8', newline='') as file:
         for title, dataframe in zip(title_list, data_list):
-            file.write(title)
-            dataframe.to_csv(file, float_format='%.5f')
-            file.write("\n")
+            if title and dataframe is not None:
+                file.write(title)
+                dataframe.to_csv(file, float_format='%.5f')
+                file.write("\n")

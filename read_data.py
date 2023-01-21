@@ -1,3 +1,18 @@
+"""Read data
+
+This script is used to read and clean provided files. As a result it
+returns one joined dataframe with all of the information.
+
+This file contains the following functions:
+
+    * read_file_to_df - returns pandas Dataframe
+    * select_years - returns Dataframe's filtered to contain only some years
+    * join_same_countries- return Dataframe's with merged rows when their
+    content pertains the same year and country
+    * check_countries - returns Dataframe's with modified country names
+    * check_data - returns cleaned up Dataframe's
+    * join_data - returns joined Dataframe with all of the information
+"""
 import sys
 from typing import Any
 import pandas as pd
@@ -56,6 +71,9 @@ def select_years(gdp: pd.DataFrame, populations: pd.DataFrame, co2: pd.DataFrame
     # Get list of all of the common years and sort it
     common_years = list(set(gdp.columns[4:]).intersection(
         co2["Year"], populations.columns[4:]))
+    if len(common_years) == 0:
+        print("Error, provided files have no common years")
+        sys.exit(-1)
     # Select boundary years if they are not provided
     if years[0] is None:
         years[0] = min(common_years)  # type: ignore
@@ -63,7 +81,7 @@ def select_years(gdp: pd.DataFrame, populations: pd.DataFrame, co2: pd.DataFrame
         years[1] = max(common_years)  # type: ignore
     # Create the list of years which will be used
     chosen_years = [year for year in common_years
-                    if year >= years[0] and year <= years[1]]
+                    if year >= years[0] and year <= years[1]] # type: ignore
     if len(chosen_years) == 0:
         print("Error, provided files have no data for chosen years")
         sys.exit(-1)
@@ -87,7 +105,8 @@ def join_same_countries(data: pd.DataFrame, data_type: int) -> pd.DataFrame:
     """
     # For co2 data
     if data_type == 1:
-        aggregate_function:dict[Any, str] = {"Country Name": 'first', "Year": 'first'}
+        aggregate_function: dict[Any, str] = {
+            "Country Name": 'first', "Year": 'first'}
         for i in list(data.columns):
             if i not in ["Country Name", "Year"]:
                 aggregate_function[i] = 'sum'
@@ -123,57 +142,21 @@ def check_countries(gdp_subset: pd.DataFrame, populations_subset: pd.DataFrame,
     :return: Dataframe's with changed 'country names' columns
     :rtype: tuple[ pd.DataFrame, pd.DataFrame, pd.DataFrame]
     """
-    # Joined shape (795, 12) (1094, 10) (1330, 3) (1330, 3)
     # Change country names according to the provided dictionary
     co2_subset = co2_subset.replace(
-        list(countries_dict.keys()), list(countries_dict.values()))
+        list(countries_dict.keys()), list(countries_dict.values()))  # type: ignore
     populations_subset = populations_subset.replace(
-        list(countries_dict.keys()), list(countries_dict.values()))
+        list(countries_dict.keys()), list(countries_dict.values()))  # type: ignore
     gdp_subset = gdp_subset.replace(
-        list(countries_dict.keys()), list(countries_dict.values()))
+        list(countries_dict.keys()), list(countries_dict.values()))  # type: ignore
 
+    if gdp_subset is None or co2_subset is None or populations_subset is None:
+        print("Error, provided files have no common countries")
+        sys.exit(-1)
     # Merge data about the same countries
     co2_subset = join_same_countries(co2_subset, data_type=1)
     populations_subset = join_same_countries(populations_subset, data_type=0)
     gdp_subset = join_same_countries(gdp_subset, data_type=0)
-
-    """
-    # Analyze diffs
-    gdp_countries = set(gdp_subset["Country Name"].str.upper())
-    population_countries = set(
-        populations_subset["Country Name"].str.upper())
-    co2_countries = set(co2_subset["Country Name"])
-    population_countries = list(population_countries)
-    population_countries = [
-        i for i in population_countries if "INCOME" not in i]
-    population_countries = [i for i in population_countries if "ASIA" not in i]
-    population_countries = [i for i in population_countries if "EURO" not in i]
-    population_countries = [i for i in population_countries if "IDA" not in i]
-    population_countries = [
-        i for i in population_countries if "AFRICA" not in i]
-    population_countries = [
-        i for i in population_countries if "AMERICA" not in i]
-    population_countries = [
-        i for i in population_countries if "MEMBERS" not in i]
-    population_countries = [
-        i for i in population_countries if "DIVIDEND" not in i]
-    population_countries = [
-        i for i in population_countries if "DEVEL" not in i]
-    population_countries = [
-        i for i in population_countries if "DEBTED" not in i]
-
-    not_in_co2 = []
-    for i in population_countries:
-        if i not in co2_countries:
-            not_in_co2.append(i)
-    print(not_in_co2, len(not_in_co2), len(
-        population_countries), len(co2_countries))
-    not_in_pop = []
-    for i in co2_countries:
-        if i not in population_countries:
-            not_in_pop.append(i)
-    print(not_in_pop, len(not_in_pop), len(
-        population_countries), len(co2_countries))"""
     return gdp_subset, populations_subset, co2_subset
 
 
@@ -248,6 +231,19 @@ def check_data(gdp: pd.DataFrame, populations: pd.DataFrame, co2: pd.DataFrame,
     # Change countries names to allow for a better merging of dataframe's
     gdp_subset, populations_subset, co2_subset = check_countries(
         gdp_subset, populations_subset, co2_subset, countries_dict=countries_dict)
+    # Change country names
+    gdp_subset['Country Name'] = gdp_subset['Country Name'].str.upper()
+    populations_subset['Country Name'] = populations_subset['Country Name'].str.upper()
+    # Look for countries not found in other files
+    gdp_countries = set(gdp_subset["Country Name"].to_list())
+    pop_countries = set(populations_subset["Country Name"].to_list())
+    co2_countries = set(co2_subset["Country Name"].to_list())
+
+    odd_countries = (gdp_countries | pop_countries |
+                     co2_countries) - (gdp_countries & pop_countries & co2_countries)
+    if len(odd_countries) > 0:
+        print(f"{len(odd_countries)} countries have not been found in all of the files. "
+              "They will be excluded from the analysis.")
     return gdp_subset, populations_subset, co2_subset, common_years
 
 
@@ -276,13 +272,9 @@ def join_data(gdp_subset: pd.DataFrame, populations_subset: pd.DataFrame,
     # Merge populations and gdp dataframe's
     gdp_population = pd.merge(gdp_subset_melt, populations_subset_melt,
                               on=["Country Name", "Year"])
-    gdp_population['Country Name'] = gdp_population['Country Name'].str.upper()
     # Merge all of the dataframe's together
     joined_data = pd.merge(co2_subset, gdp_population,
                            on=["Country Name", "Year"])
     joined_data['Population'].replace(
         to_replace=0, value=float('nan'), inplace=True)
-    print("Joined shape", joined_data.shape, co2_subset.shape,
-          gdp_subset_melt.shape, populations_subset_melt.shape)
-    print(len(set(joined_data["Country Name"])))
     return joined_data
