@@ -9,10 +9,10 @@ Results of those analyses are then saved to csv file.
 
 ## Installation
 
-Install this project with pip
+Install this project with pip while in the folder with "setup.py" file
 
 ```bash
-  pip install ./path/to/project`
+  pip install .
 ```
     
 ## Usage
