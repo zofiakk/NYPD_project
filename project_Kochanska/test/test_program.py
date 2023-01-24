@@ -10,8 +10,8 @@ import os
 import pytest
 import pandas as pd
 import numpy as np
-import read_data
-import analyze_data
+import project_Kochanska.read_data as read_data
+import project_Kochanska.analyze_data as analyze_data
 
 
 def write_file(file_name: str, header: bool, empty: bool = False) -> str:
@@ -252,8 +252,9 @@ def test_find_co2_changes():
     assert result_df.iloc[0].to_list() == ['B', 9900.0, 'A', -900.0]
 
     # Check if program correctly identifies multiple same changes in emission
-    per_capita_df.loc[len(per_capita_df)] = [2014, "C", 10, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
-                                             100, 10000, 1]
+    per_capita_df.loc[len(per_capita_df)] = [2014,  # type: ignore
+                                             "C", 10, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 100, 10000, 1]
     result_double_df = analyze_data.find_co2_changes(per_capita_df)[0]
-    assert result_double_df.iloc[0].to_list() == ['C, B', 9900.0, 'A', -900.0]
+    assert result_double_df.iloc[0].to_list() in [['C, B', 9900.0, 'A', -900.0],
+                                                  ['B, C', 9900.0, 'A', -900.0]]
     

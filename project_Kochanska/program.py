@@ -12,8 +12,8 @@ This file can also be imported as a module and contains one function:
 """
 import argparse
 import sys
-import analyze_data
-import read_data
+import project_Kochanska.analyze_data as analyze_data
+import project_Kochanska.read_data as read_data
 
 
 def main():
